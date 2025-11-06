@@ -1,68 +1,96 @@
-# MAI FastAPI 后端
+# MAI-WEB 后端
 
-## 快速开始
+基于 FastAPI 与 SQLAlchemy Async 的异步 REST API，负责管理文章元数据、提供文章列表/详情接口，并挂载静态目录输出 Markdown 原文。配套脚本可批量导入 Markdown 文件或清理文章记录。
 
-1. 建立虚拟环境并安装依赖：
+## 环境要求
+- Python 3.11+
+- MySQL 8（或兼容的异步驱动数据库，默认使用 `mysql+aiomysql`）
+- 建议使用虚拟环境管理依赖
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # Windows 使用 .venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+## 安装与启动
 
-2. 根据实际数据库连接修改 `.env`（可复制 `.env.example`）：
+### 1. 创建虚拟环境并安装依赖
+```bash
+python -m venv .venv
+source .venv/bin/activate           # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-   ```env
-   DATABASE_URL=mysql+aiomysql://用户名:密码@localhost:3306/mai_db
-   BACKEND_CORS_ORIGINS=http://localhost:5173
-   ```
+### 2. 配置环境变量
+复制 `.env.example`（若存在）到 `.env`，或直接创建 `.env`：
+```env
+DATABASE_URL=mysql+aiomysql://用户名:密码@localhost:3306/mai_db
+BACKEND_CORS_ORIGINS=http://localhost:5173
+```
+- `DATABASE_URL` 支持任意 SQLAlchemy Async URL，例如 PostgreSQL 可切换为 `postgresql+asyncpg://...`。
+- `BACKEND_CORS_ORIGINS` 支持逗号分隔多个来源。
 
-3. 启动 FastAPI 服务：
+### 3. 初始化数据库并启动服务
+```bash
+uvicorn app.main:app --reload
+```
+- 首次启动会自动创建 `posts` 表。
+- 后端默认监听 `http://localhost:8000`。
+- 静态目录 `backend/content/` 会在启动时自动创建并挂载为 `/content`。
 
-   ```bash
-   uvicorn app.main:app --reload
-   ```
+## API 路由
+- `GET /api/posts`：获取文章列表。
+- `GET /api/posts/{post_id}`：按 ID 获取文章详情。
+- `GET /api/posts/slug/{slug}`：按 slug 获取文章详情，供前端通过路径跳转。
+- `/content/<filename>`：静态托管 Markdown 原文（供前端详情页拉取并解析）。
 
-   首次启动会自动同步数据库表结构。
+响应字段包含：
+- `id`、`title`、`excerpt`、`content_path`、`tags`、`slug`、`created_at`、`updated_at`。
 
-## API 概览
+## 项目结构
+```
+app/
+├── main.py        # FastAPI 入口，注册路由/CORS/静态目录
+├── config.py      # 环境变量配置（Pydantic Settings）
+├── database.py    # SQLAlchemy 异步引擎与会话
+├── models.py      # 数据模型（Post）
+├── schemas.py     # Pydantic 模型（输入/输出）
+└── crud.py        # 数据库操作封装
 
-- `GET /api/posts`：获取所有文章。
-- `GET /api/posts/{post_id}`：根据 ID 获取单篇文章。
+scripts/
+├── import_markdown.py  # 批量导入 Markdown
+└── clear_posts.py      # 清理文章记录
+```
 
-所有返回数据均为 JSON，字段包含 `id`、`title`、`excerpt`、`content`、`tags`、`slug`、`created_at`、`updated_at`。
+## 管理 Markdown 与文章
 
-## 批量导入 Markdown 文章
+### 批量导入 Markdown
+```bash
+python scripts/import_markdown.py --dir ./content
+```
+脚本行为：
+- 扫描目标目录下 `.md` 文件，自动生成 slug、提取标题与摘要。
+- 如数据库中已存在同名 slug，则跳过导入。
+- 将 Markdown 文件复制到 `backend/content/`，并在数据库中记录 `content_path`。
+- 导入完成后输出新增/跳过数量。
 
-1. 将 `.md` 文件放入 `backend/content/`（可按需自建子目录，如果使用 `--dir` 指定路径即可）。
-2. 每个文件默认以 **文件名** 作为 slug；若 Markdown 第一行是 `# 标题`，会自动识别为文章标题。
-3. 运行脚本导入尚未存在的文章：
+可通过 `--dir` 指定任意 Markdown 目录，例如：
+```bash
+python scripts/import_markdown.py --dir ~/Documents/posts
+```
 
-   ```bash
-   # 在 backend 目录下，确保虚拟环境已激活
-   python scripts/import_markdown.py --dir ./content
-   ```
-
-   该脚本会：
-   - 遍历目录下全部 `.md` 文件。
-   - 以文件名生成 slug，判断数据库中是否已存在同名 slug。
-   - 如不存在则解析 Markdown，取首段作为摘要，将正文转换成 HTML 并写入数据库。
-   - 已存在的 slug 会被跳过，避免重复导入。
-
-   自当前版本起，脚本会将 Markdown 文件复制到 `backend/content/` 并在数据库中存储其相对路径（`/content/xxx.md`）。前端在请求文章详情时会根据该路径获取原始 Markdown 并在客户端完成渲染。
-
-可以通过 `--dir` 指定其它目录，例如 `python scripts/import_markdown.py --dir ~/Documents/posts`。
-
-## 清理数据库中的文章
-
-- 删除所有文章（需要双重确认）：
-
+### 清理文章
+- 删除所有文章（需双重确认）：
   ```bash
   python scripts/clear_posts.py --all --yes
   ```
-
 - 按 slug 删除指定文章：
-
   ```bash
-  python scripts/clear_posts.py --slug my-post-slug another-slug
+  python scripts/clear_posts.py --slug first-post another-post
   ```
+
+## 部署建议
+- 生产环境可使用 `uvicorn` + `gunicorn` 或 `uvicorn` 的多 worker 模式。
+- 将 `.env` 中的 `DATABASE_URL` 与 `BACKEND_CORS_ORIGINS` 改为生产配置。
+- 通过 Nginx/Traefik 等反向代理统一暴露 `/api` 与 `/content`。
+- 定期备份数据库与 `backend/content/` 目录，以防 Markdown 原文丢失。
+
+## 常见问题
+- **数据库连接失败**：确认 MySQL 账号权限、网络连通性及 `aiomysql` 是否安装。
+- **跨域请求被拒绝**：确保 `.env` 中的 `BACKEND_CORS_ORIGINS` 包含前端访问域名或端口。
+- **Markdown 获取失败**：检查 `content_path` 是否指向实际存在的文件，或确认静态目录挂载是否正常。
