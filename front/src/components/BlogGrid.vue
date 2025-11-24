@@ -42,6 +42,11 @@ const resolveLink = (post) => {
   if (post.url) return post.url
   return '#'
 }
+
+const resolveVisibility = (post) => {
+  if (post.visibility === 'member') return '会员专享'
+  return '注册可读'
+}
 </script>
 
 <template>
@@ -66,7 +71,7 @@ const resolveLink = (post) => {
             {{ resolveExcerpt(post) }}
           </p>
         </div>
-        <div class="mt-6 flex items-center justify-between text-sm">
+        <div class="mt-6 flex items-center justify-between gap-3 text-sm">
           <a
             :href="resolveLink(post)"
             class="inline-flex items-center gap-2 font-medium text-gray-600 transition group-hover:text-gray-900"
@@ -76,6 +81,9 @@ const resolveLink = (post) => {
               >&rarr;</span
             >
           </a>
+          <span class="rounded-full bg-gray-100 px-3 py-1 text-[11px] font-medium text-gray-600">
+            {{ resolveVisibility(post) }}
+          </span>
           <span
             v-if="resolveTag(post)"
             class="text-xs uppercase tracking-[0.3em] text-gray-400"

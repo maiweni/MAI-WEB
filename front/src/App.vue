@@ -1,7 +1,15 @@
 <script setup>
+import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 import SiteNav from './components/SiteNav.vue'
 import SiteFooter from './components/SiteFooter.vue'
+import { useAuthStore } from './utils/authStore'
+
+const { bootstrap } = useAuthStore()
+
+onMounted(() => {
+  bootstrap()
+})
 </script>
 
 <template>

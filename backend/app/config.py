@@ -10,6 +10,8 @@ class Settings(BaseSettings):
         "mysql+aiomysql://mai_user:mai_password@localhost:3306/mai_db"
     )
     backend_cors_origins: str | List[str] = "http://localhost:5173"
+    secret_key: str = "change-this-secret-key"
+    access_token_expire_minutes: int = 60 * 24 * 7  # default 7 days
 
     @field_validator("backend_cors_origins", mode="before")
     @classmethod

@@ -30,6 +30,7 @@ async def create_post(session: AsyncSession, payload: schemas.PostCreate) -> mod
         content_path=payload.content_path,
         tags=tags,
         slug=payload.slug,
+        visibility=payload.visibility,
     )
     session.add(post)
     await session.commit()
@@ -54,6 +55,36 @@ async def update_post(
     await session.commit()
     await session.refresh(db_post)
     return db_post
+
+
+async def get_user_by_email(
+    session: AsyncSession, email: str
+) -> models.User | None:
+    result = await session.execute(
+        select(models.User).where(models.User.email == email)
+    )
+    return result.scalars().first()
+
+
+async def create_user(
+    session: AsyncSession, email: str, password_hash: str, role: str = "user"
+) -> models.User:
+    user = models.User(email=email, password_hash=password_hash, role=role)
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+async def upgrade_membership(
+    session: AsyncSession, user: models.User, expires_at
+) -> models.User:
+    if user.role != "admin":
+        user.role = "member"
+    user.membership_expires_at = expires_at
+    await session.commit()
+    await session.refresh(user)
+    return user
 
 
 async def delete_post(session: AsyncSession, db_post: models.Post) -> None:

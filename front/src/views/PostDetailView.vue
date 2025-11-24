@@ -1,21 +1,25 @@
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
 
-import { fetchPostBySlug } from '../services/api'
+import { fetchPostBySlug, fetchPosts } from '../services/api'
+import { useAuthStore } from '../utils/authStore'
 
 const route = useRoute()
 const router = useRouter()
+const { state: auth, login, register, upgrade, bootstrap } = useAuthStore()
 
 const post = ref(null)
 const loading = ref(true)
 const error = ref('')
 const contentHtml = ref('')
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+const permission = ref('') // '', 'login', 'upgrade'
+const form = reactive({ email: '', password: '' })
+const submitting = ref(false)
+const mode = ref('login')
 
 const md = new MarkdownIt({
   html: true,
@@ -39,29 +43,29 @@ const md = new MarkdownIt({
   },
 })
 
-const loadMarkdownContent = async (markdownPath) => {
-  if (!markdownPath) {
-    contentHtml.value = ''
-    return
-  }
-  const url = new URL(markdownPath, API_BASE_URL).toString()
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error('文章正文加载失败')
-  }
-  const rawMarkdown = await response.text()
-  contentHtml.value = md.render(rawMarkdown)
-}
-
 const loadPost = async () => {
+  loading.value = true
+  permission.value = ''
+  contentHtml.value = ''
   try {
-    const data = await fetchPostBySlug(route.params.slug)
+    const data = await fetchPostBySlug(route.params.slug, auth.token)
     post.value = data
-    await loadMarkdownContent(data.content_path)
+    contentHtml.value = data.content ? md.render(data.content) : ''
     error.value = ''
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载文章失败'
-    if (error.value.includes('文章不存在')) {
+    const message = err instanceof Error ? err.message : '加载文章失败'
+    error.value = message
+    if (err.status === 401) {
+      await hydratePostMeta()
+      permission.value = 'login'
+      return
+    }
+    if (err.status === 403) {
+      await hydratePostMeta()
+      permission.value = 'upgrade'
+      return
+    }
+    if (message.includes('文章不存在')) {
       router.replace({ name: 'blog' })
     }
   } finally {
@@ -69,14 +73,64 @@ const loadPost = async () => {
   }
 }
 
-onMounted(loadPost)
+const hydratePostMeta = async () => {
+  try {
+    const items = await fetchPosts()
+    const matched = items.find((item) => item.slug === route.params.slug)
+    if (matched) {
+      post.value = matched
+    }
+  } catch (e) {
+    console.error('failed to hydrate post meta', e)
+  }
+}
+
+const handleLogin = async () => {
+  submitting.value = true
+  try {
+    await login(form.email, form.password)
+    await loadPost()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '登录失败'
+  } finally {
+    submitting.value = false
+  }
+}
+
+const handleRegister = async () => {
+  submitting.value = true
+  try {
+    await register(form.email, form.password)
+    await loadPost()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '注册失败'
+  } finally {
+    submitting.value = false
+  }
+}
+
+const handleUpgrade = async () => {
+  submitting.value = true
+  try {
+    await upgrade()
+    await loadPost()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '升级失败'
+  } finally {
+    submitting.value = false
+  }
+}
+
+onMounted(async () => {
+  await bootstrap()
+  await loadPost()
+})
+
 watch(
   () => route.params.slug,
-  () => {
-    loading.value = true
+  async () => {
     error.value = ''
-    contentHtml.value = ''
-    loadPost()
+    await loadPost()
   }
 )
 </script>
@@ -87,29 +141,114 @@ watch(
       正在载入文章...
     </div>
 
-    <div v-else-if="error" class="text-center text-sm text-red-500">
-      {{ error }}
-    </div>
-
-    <article v-else class="mx-auto max-w-3xl space-y-12">
-      <header class="space-y-3 text-center">
-        <p class="text-xs uppercase tracking-[0.3em] text-gray-400">
-          {{ new Date(post.created_at).toLocaleDateString('zh-CN', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          }) }}
-        </p>
-        <h1 class="text-3xl font-semibold tracking-tight text-gray-900 md:text-4xl">
-          {{ post.title }}
+    <div v-else>
+      <div v-if="permission === 'login'" class="mx-auto max-w-xl rounded-2xl border border-gray-200 bg-white/80 p-8 shadow-soft">
+        <h1 class="text-center text-2xl font-semibold text-gray-900">
+          {{ post?.title ?? '登录后查看全文' }}
         </h1>
-        <p v-if="post.excerpt" class="text-base text-gray-500">
-          {{ post.excerpt }}
+        <p class="mt-3 text-center text-sm text-gray-500">
+          这是一篇仅限注册用户阅读的文章，请先登录或注册账号。
         </p>
-      </header>
+        <form
+          class="mt-8 space-y-4"
+          @submit.prevent="mode === 'login' ? handleLogin() : handleRegister()"
+        >
+          <label class="block space-y-2 text-sm text-gray-600">
+            <span>邮箱</span>
+            <input
+              v-model="form.email"
+              type="email"
+              required
+              class="w-full rounded-lg border border-gray-200 px-4 py-2 focus:border-gray-400 focus:outline-none"
+              placeholder="you@example.com"
+            />
+          </label>
+          <label class="block space-y-2 text-sm text-gray-600">
+            <span>密码</span>
+            <input
+              v-model="form.password"
+              type="password"
+              required
+              class="w-full rounded-lg border border-gray-200 px-4 py-2 focus:border-gray-400 focus:outline-none"
+              placeholder="至少 6 位"
+            />
+          </label>
+          <button
+            type="submit"
+            :disabled="submitting"
+            class="flex w-full items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+          >
+            {{ submitting ? '处理中...' : mode === 'login' ? '登录并阅读' : '注册并阅读' }}
+          </button>
+        </form>
+        <div class="mt-4 text-center text-xs text-gray-500">
+          <button
+            type="button"
+            class="font-medium text-gray-700 underline"
+            @click="mode = mode === 'login' ? 'register' : 'login'"
+          >
+            {{ mode === 'login' ? '没有账号？点击注册' : '已有账号？点击登录' }}
+          </button>
+        </div>
+        <p v-if="error" class="mt-3 text-center text-sm text-red-500">{{ error }}</p>
+      </div>
 
-      <div class="content-body mx-auto max-w-none text-left" v-html="contentHtml"></div>
-    </article>
+      <div
+        v-else-if="permission === 'upgrade'"
+        class="mx-auto max-w-xl rounded-2xl border border-amber-200 bg-amber-50 p-8 text-amber-900 shadow-soft"
+      >
+        <h1 class="text-center text-2xl font-semibold">
+          {{ post?.title ?? '会员专享内容' }}
+        </h1>
+        <p class="mt-3 text-center text-sm">
+          这篇文章仅对会员开放。升级会员后即可立即阅读全文。
+        </p>
+        <div class="mt-6 flex flex-col items-center gap-3 text-sm">
+          <button
+            type="button"
+            :disabled="submitting"
+            class="w-full rounded-lg bg-amber-600 px-4 py-2 font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300"
+            @click="handleUpgrade"
+          >
+            {{ submitting ? '处理中...' : '升级会员并解锁' }}
+          </button>
+          <p class="text-amber-800">
+            当前身份：{{ auth.user ? (auth.user.role === 'member' ? '会员' : '注册用户') : '未登录' }}
+          </p>
+        </div>
+        <p v-if="error" class="mt-3 text-center text-sm text-amber-800">{{ error }}</p>
+      </div>
+
+      <div v-else-if="error" class="text-center text-sm text-red-500">
+        {{ error }}
+      </div>
+
+      <article v-else class="mx-auto max-w-3xl space-y-12">
+        <header class="space-y-3 text-center">
+          <p class="text-xs uppercase tracking-[0.3em] text-gray-400">
+            {{ new Date(post.created_at).toLocaleDateString('zh-CN', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            }) }}
+          </p>
+          <h1 class="text-3xl font-semibold tracking-tight text-gray-900 md:text-4xl">
+            {{ post.title }}
+          </h1>
+          <!-- <p v-if="post.excerpt" class="text-base text-gray-500">
+            {{ post.excerpt }}
+          </p> -->
+          <p class="text-xs text-gray-400">
+            可见性：
+            <span class="font-semibold text-gray-700">
+              {{ post.visibility === 'member' ? '会员可读' : '注册用户可读' }}
+            </span>
+          </p>
+        </header>
+
+        <div class="content-body mx-auto max-w-none text-left" v-html="contentHtml"></div>
+      </article>
+    </div>
   </div>
 </template>
 
