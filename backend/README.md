@@ -21,9 +21,12 @@ pip install -r requirements.txt
 ```env
 DATABASE_URL=mysql+aiomysql://用户名:密码@localhost:3306/mai_db
 BACKEND_CORS_ORIGINS=http://localhost:5173
+SECRET_KEY=请替换为随机字符串
+ACCESS_TOKEN_EXPIRE_MINUTES=10080  # 可选，Token 过期时间，默认 7 天
 ```
 - `DATABASE_URL` 支持任意 SQLAlchemy Async URL，例如 PostgreSQL 可切换为 `postgresql+asyncpg://...`。
 - `BACKEND_CORS_ORIGINS` 支持逗号分隔多个来源。
+- `SECRET_KEY` 用于签发/校验 JWT。
 
 ### 3. 初始化数据库并启动服务
 ```bash
@@ -31,16 +34,17 @@ uvicorn app.main:app --reload
 ```
 - 首次启动会自动创建 `posts` 表。
 - 后端默认监听 `http://localhost:8000`。
-- 静态目录 `backend/content/` 会在启动时自动创建并挂载为 `/content`。
+- 静态目录 `backend/content/` 会在启动时自动创建，详情接口直接读取 Markdown 文件（不再对外暴露 `/content` 公共访问）。
 
 ## API 路由
 - `GET /api/posts`：获取文章列表。
-- `GET /api/posts/{post_id}`：按 ID 获取文章详情。
-- `GET /api/posts/slug/{slug}`：按 slug 获取文章详情，供前端通过路径跳转。
-- `/content/<filename>`：静态托管 Markdown 原文（供前端详情页拉取并解析）。
+- `GET /api/posts/{post_id}`：按 ID 获取文章详情（需要登录，会员文章需要会员权限）。
+- `GET /api/posts/slug/{slug}`：按 slug 获取文章详情（需要登录，会员文章需要会员权限）。
+- 认证：`POST /api/auth/register`、`POST /api/auth/login`、`GET /api/auth/me`、`POST /api/auth/upgrade`（升级会员，示例实现为直接延长 30 天）。
 
 响应字段包含：
-- `id`、`title`、`excerpt`、`content_path`、`tags`、`slug`、`created_at`、`updated_at`。
+- 列表：`id`、`title`、`excerpt`、`content_path`、`tags`、`slug`、`visibility`、`created_at`、`updated_at`。
+- 详情：同上，外加 `content`（后端读取 Markdown 文件内容并返回）。
 
 ## 项目结构
 ```
@@ -48,9 +52,10 @@ app/
 ├── main.py        # FastAPI 入口，注册路由/CORS/静态目录
 ├── config.py      # 环境变量配置（Pydantic Settings）
 ├── database.py    # SQLAlchemy 异步引擎与会话
-├── models.py      # 数据模型（Post）
-├── schemas.py     # Pydantic 模型（输入/输出）
-└── crud.py        # 数据库操作封装
+├── models.py      # 数据模型（Post、User）
+├── schemas.py     # Pydantic 模型（文章/用户/Token）
+├── crud.py        # 数据库操作封装
+└── security.py    # 密码哈希、JWT 签发/校验
 
 scripts/
 ├── import_markdown.py  # 批量导入 Markdown
@@ -93,4 +98,5 @@ python scripts/import_markdown.py --dir ~/Documents/posts
 ## 常见问题
 - **数据库连接失败**：确认 MySQL 账号权限、网络连通性及 `aiomysql` 是否安装。
 - **跨域请求被拒绝**：确保 `.env` 中的 `BACKEND_CORS_ORIGINS` 包含前端访问域名或端口。
-- **Markdown 获取失败**：检查 `content_path` 是否指向实际存在的文件，或确认静态目录挂载是否正常。
+- **Markdown 获取失败**：检查 `content_path` 是否指向实际存在的文件，路径请使用相对 `backend/content/` 的写法（如 `posts/foo.md`）。
+- **登录后仍提示需要登录**：确认前端是否携带 `Authorization: Bearer <token>`，`SECRET_KEY` 是否一致，Token 是否过期。

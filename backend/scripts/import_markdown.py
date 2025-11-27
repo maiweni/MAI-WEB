@@ -105,10 +105,12 @@ async def import_markdown(directory: Path) -> tuple[int, int]:
             except FileNotFoundError:
                 shutil.copy2(parsed.source_path, destination)
 
+            # store relative path (no leading slash) so backend can resolve against content dir
+            relative_path = destination.relative_to(target_dir).as_posix()
             payload = schemas.PostCreate(
                 title=parsed.title,
                 excerpt=parsed.excerpt or None,
-                content_path=f"/content/{destination.name}",
+                content_path=relative_path,
                 tags=[],
                 slug=parsed.slug,
             )

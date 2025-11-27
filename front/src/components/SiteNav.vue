@@ -9,6 +9,7 @@ const { state, logout, bootstrap, upgrade } = useAuthStore()
 
 const links = computed(() => [
   { name: '首页', to: { name: 'home' } },
+  { name: 'AI问答', to: { name: 'ai-qa' } },
   { name: '博客', to: { name: 'blog' } },
   { name: '关于', to: { name: 'about' } },
   { name: '联系', to: { name: 'contact' } },

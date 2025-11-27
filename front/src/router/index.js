@@ -14,9 +14,19 @@ const router = createRouter({
       component: () => import('../views/BlogView.vue'),
     },
     {
+      path: '/ai-qa',
+      name: 'ai-qa',
+      component: () => import('../views/AiQnAView.vue'),
+    },
+    {
       path: '/blog/:slug',
       name: 'post-detail',
       component: () => import('../views/PostDetailView.vue'),
+    },
+    {
+      path: '/blog/category/:key',
+      name: 'category',
+      component: () => import('../views/CategoryView.vue'),
     },
     {
       path: '/about',

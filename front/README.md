@@ -1,6 +1,6 @@
 # MAI-WEB 前端
 
-使用 Vue 3、Vite 和 Tailwind CSS 构建的单页应用，提供博客首页、文章列表、文章详情、关于与联系等页面。文章数据与正文通过调用后端接口与静态资源获取，并在客户端完成 Markdown 渲染与代码高亮。
+使用 Vue 3、Vite 和 Tailwind CSS 构建的单页应用，提供博客首页、文章列表、文章详情、关于与联系等页面。文章数据与正文通过调用后端接口获取，并在客户端完成 Markdown 渲染与代码高亮。支持登录、注册、会员分层访问控制。
 
 ## 关键特性
 - **客户端路由**：`vue-router` 管理首页 (`/`)、博客列表 (`/blog`)、文章详情 (`/blog/:slug`) 等路由。
@@ -33,7 +33,7 @@ npm run preview
 ```bash
 VITE_API_BASE_URL=http://localhost:8000
 ```
-未设置时默认回退到 `http://localhost:8000`。
+未设置时默认回退到 `http://localhost:8000`。认证接口（登录/注册/会员）同样依赖该地址。
 
 ## 目录结构概览
 ```
@@ -48,8 +48,10 @@ src/
 ```
 
 ## 与后端的联动
-- 列表页调用 `GET /api/posts` 获取文章元信息（标题、摘要、标签、`content_path` 等）。
-- 详情页调用 `GET /api/posts/slug/{slug}` 获取单篇文章，并通过 `content_path` 从后端静态目录拉取 Markdown 原文。
+- 列表页调用 `GET /api/posts` 获取文章元信息（标题、摘要、标签、`content_path`、`visibility` 等）。
+- 详情页调用 `GET /api/posts/slug/{slug}` 获取单篇文章正文（需登录；会员文章需会员身份），后端直接返回 `content` 字段。
+- 认证：`/api/auth/register`、`/api/auth/login`、`/api/auth/me`、`/api/auth/upgrade`，Token 保存在浏览器 `localStorage`。
+- 未登录访问受限文章时，前端会跳转到 `/login?redirect=当前页`，登录/注册成功后返回原页。
 - 为避免跨域问题，请确保后端 `.env` 中 `BACKEND_CORS_ORIGINS` 包含前端地址。
 
 ## 发布与部署

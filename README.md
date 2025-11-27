@@ -7,6 +7,7 @@
 - **Markdown 前端渲染**：文章正文在浏览器端解析，支持 GitHub Dark 代码高亮主题。
 - **现代前端技术栈**：Vite 构建、Vue Router 页面切换、Tailwind CSS 快速样式编写。
 - **异步后端接口**：FastAPI + SQLAlchemy Async 提供 RESTful API，并挂载静态目录供前端读取 Markdown。
+- **登录与会员分层**：未登录仅能看标题，注册用户可看注册级文章，会员可看会员文章；支持登录/注册、会员升级接口。
 
 ## 技术栈
 - 前端：Vue 3、Vite、Tailwind CSS、Vue Router、markdown-it、highlight.js
@@ -41,7 +42,7 @@ cd MAI-WEB
 2. 配置 `.env`（数据库连接、CORS 来源等）。
 3. 运行 `uvicorn app.main:app --reload`。
 
-后端默认监听 `http://localhost:8000`，并暴露 `/api/posts`、`/api/posts/{post_id}`、`/api/posts/slug/{slug}` 等接口，同时提供 `/content/*` 静态资源读取 Markdown。
+后端默认监听 `http://localhost:8000`，提供 `/api/posts`、`/api/posts/{post_id}`、`/api/posts/slug/{slug}` 文章接口，以及认证接口 `/api/auth/register`、`/api/auth/login`、`/api/auth/me`、`/api/auth/upgrade`。文章详情会按用户身份返回正文。
 
 ### 3. 启动前端
 详见 `front/README.md`，核心步骤：
@@ -61,5 +62,6 @@ cd MAI-WEB
 
 ## 常见问题
 - **跨域访问失败**：检查 `.env` 中 `BACKEND_CORS_ORIGINS` 是否包含前端地址。
-- **文章正文 404**：确认导入脚本是否成功写入 Markdown 文件，或 `content_path` 是否指向已存在的文件。
+- **文章正文不存在 / 500**：确认 `content_path` 指向 `backend/content/` 下存在的 Markdown 文件，路径建议使用相对路径（如 `posts/xxx.md`）。
 - **代码高亮不生效**：确保前端安装依赖后重新构建，且高亮样式 `highlight.js/styles/github-dark.css` 已被正确引入。
+- **登录后仍提示未登录**：检查前端是否携带 `Authorization: Bearer <token>`，后端 `SECRET_KEY` 是否已配置，Token 是否过期。
